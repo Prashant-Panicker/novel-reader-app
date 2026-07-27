@@ -26,8 +26,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   void _reload() {
     setState(() {
-      _library = DatabaseService.instance.getChaptersByBook();
-      _mostRecent = DatabaseService.instance.getMostRecentChapter();
+      try {
+        _library = DatabaseService.instance.getChaptersByBook();
+        _mostRecent = DatabaseService.instance.getMostRecentChapter();
+      } on StateError {
+        // Database not initialized (tests or early startup). Show empty library.
+        _library = <String, List<Chapter>>{};
+        _mostRecent = null;
+      }
     });
   }
 
