@@ -64,6 +64,16 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Patch flutter_inappwebview proguard (CI workaround)
+        run: |
+          PUB_CACHE="$HOME/.pub-cache/hosted/pub.dev"
+          for f in "$PUB_CACHE"/flutter_inappwebview_android-*/android/build.gradle; do
+            if [ -f "$f" ]; then
+              sed -i "s/getDefaultProguardFile('proguard-android.txt')/getDefaultProguardFile('proguard-android-optimize.txt')/g" "$f" || true
+              echo "Patched $f"
+            fi
+          done
+
       - name: Analyze
         run: flutter analyze --no-fatal-infos
 
