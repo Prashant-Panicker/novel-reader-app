@@ -74,6 +74,16 @@ jobs:
             fi
           done
 
+      - name: Patch JNI plugin build.gradle (CI workaround)
+        run: |
+          PUB_CACHE="$HOME/.pub-cache/hosted/pub.dev"
+          for f in "$PUB_CACHE"/jni-1.0.1/android/build.gradle; do
+            if [ -f "$f" ] && ! grep -q "apply plugin: 'kotlin-android'" "$f"; then
+              sed -i "s|apply plugin: 'com.android.library'|apply plugin: 'com.android.library'\napply plugin: 'kotlin-android'|g" "$f"
+              echo "Patched $f"
+            fi
+          done
+
       - name: Analyze
         run: flutter analyze --no-fatal-infos
 
