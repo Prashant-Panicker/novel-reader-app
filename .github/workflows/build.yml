@@ -48,21 +48,12 @@ jobs:
           else
             # Fallback: ensure INTERNET permission at least.
             if [ -f "$TARGET" ] && ! grep -q 'android.permission.INTERNET' "$TARGET"; then
-              python3 - <<'PY'
-          import re, pathlib
-          p = pathlib.Path("android/app/src/main/AndroidManifest.xml")
-          text = p.read_text()
-          text = re.sub(
-              r"(<manifest[^>]*>)",
-              r"""\1
-      <uses-permission android:name="android.permission.INTERNET"/>
-      <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>""",
-              text,
-              count=1,
-          )
-          p.write_text(text)
-          print("Injected INTERNET + NETWORK_STATE permissions")
-          PY
+                # Insert INTERNET and NETWORK_STATE permissions after the <manifest> tag
+                awk '
+                /<manifest/ && !inserted { print; print "    <uses-permission android:name=\"android.permission.INTERNET\"/>"; print "    <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>"; inserted=1; next }
+                { print }
+                ' "$TARGET" > "$TARGET.tmp" && mv "$TARGET.tmp" "$TARGET"
+                echo "Injected INTERNET + NETWORK_STATE permissions"
             fi
           fi
           # Ensure the application label is Novel Reader even if overlay was skipped.
