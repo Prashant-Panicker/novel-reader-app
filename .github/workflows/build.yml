@@ -78,8 +78,9 @@ jobs:
         run: |
           PUB_CACHE="$HOME/.pub-cache/hosted/pub.dev"
           f="$PUB_CACHE/jni-1.0.1/android/build.gradle"
-          if [ -f "$f" ]; then
-            python3 -c "from pathlib import Path; f=Path('$f'); text=f.read_text(); if \"apply plugin: 'kotlin-android'\" not in text: text=text.replace(\"apply plugin: 'com.android.library'\", \"apply plugin: 'com.android.library'\napply plugin: 'kotlin-android'\"); block=\"kotlin {\n    compilerOptions {\n        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17\n    }\n}\n\"; replacement=\"if (project.plugins.hasPlugin('kotlin-android')) {\n    kotlin {\n        compilerOptions {\n            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17\n        }\n    }\n}\n\"; if block in text: text=text.replace(block, replacement); f.write_text(text); print(f'Patched {f}')"
+          if [ -f "$f" ] && ! grep -q "apply plugin: 'kotlin-android'" "$f"; then
+            sed -i "s|apply plugin: 'com.android.library'|apply plugin: 'com.android.library'\napply plugin: 'kotlin-android'|" "$f"
+            echo "Patched $f"
           fi
 
       - name: Analyze
