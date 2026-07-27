@@ -1,0 +1,39 @@
+name: novel_reader
+description: "Novel Reader — browse novel sites yourself, then AI-translate with your own Kimi API key and read offline bilingually."
+publish_to: 'none'
+version: 1.1.0+2
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # Full-featured in-app browser (user drives it manually to pass Cloudflare/Captcha)
+  flutter_inappwebview: ^6.1.5
+
+  # Networking to the user's personal Moonshot (Kimi) API
+  dio: ^5.7.0
+
+  # Encrypted on-device storage for the private API key
+  flutter_secure_storage: ^9.2.2
+
+  # Local offline database for translated chapters
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+
+  # Stable primary keys for chapters
+  uuid: ^4.5.1
+
+  # Path helpers used by Hive / secure storage on some platforms
+  path_provider: ^2.1.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
