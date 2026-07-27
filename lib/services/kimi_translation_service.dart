@@ -131,9 +131,9 @@ class KimiTranslationService {
       return content.trim();
     } on DioException catch (e) {
       final status = e.response?.statusCode;
-      final serverMessage = e.response?.data is Map
-          ? e.response?.data['error']?['message'] as String?
-          : null;
+      final serverMessage = (e.response?.data is Map)
+        ? (e.response?.data['error']?['message'] as String?)
+        : null;
       throw KimiApiException(
         serverMessage ?? e.message ?? 'Network error',
         statusCode: status,
