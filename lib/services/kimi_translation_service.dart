@@ -110,7 +110,7 @@ class KimiTranslationService {
         options: Options(headers: {'Authorization': 'Bearer $apiKey'}),
         data: {
           'model': _model,
-          'temperature': 0.3,
+          'temperature': 1,
           'messages': [
             {'role': 'system', 'content': _systemPrompt},
             {
