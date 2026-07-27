@@ -35,3 +35,9 @@ class NovelReaderApp extends StatelessWidget {
     );
   }
 }
+
+/// Compatibility alias for template tests or external references
+/// that expect a `MyApp` entrypoint.
+class MyApp extends NovelReaderApp {
+  const MyApp({super.key});
+}
