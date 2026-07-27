@@ -38,6 +38,8 @@ dev_dependencies:
 dependency_overrides:
   jni:
     path: patches/jni
+  flutter_inappwebview_android:
+    path: patches/flutter_inappwebview_android
 
 flutter:
   uses-material-design: true
