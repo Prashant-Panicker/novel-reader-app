@@ -281,12 +281,11 @@ packages:
     source: hosted
     version: "4.1.2"
   jni:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: jni
-      sha256: ca1efa31ef27a0b8ecbb4f8dcf3785e5ad1b8a54c64af9b72d287ae81f93a4f4
-      url: "https://pub.dev"
-    source: hosted
+      path: "patches/jni"
+      relative: true
+    source: path
     version: "1.0.1"
   jni_flutter:
     dependency: transitive
