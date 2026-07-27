@@ -27,8 +27,8 @@ class KimiTranslationService {
   KimiTranslationService._();
   static final KimiTranslationService instance = KimiTranslationService._();
 
-  static const String _baseUrl = 'https://api.moonshot.cn/v1';
-  static const String _model = 'moonshot-v1-auto';
+  static const String _baseUrl = 'https://api.moonshot.ai/v1';
+  static const String _model = 'kimi-k2.6';
 
   static const String _systemPrompt =
       'You are an expert translator specializing in Chinese web novels '
