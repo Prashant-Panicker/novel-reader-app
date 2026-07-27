@@ -43,3 +43,7 @@ ios/Runner/GeneratedPluginRegistrant.*
 coverage/
 .env
 .env.*
+
+# Generated Flutter files
+.flutter-plugins-dependencies
+**/.cxx/
