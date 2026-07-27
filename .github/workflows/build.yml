@@ -77,12 +77,34 @@ jobs:
       - name: Patch JNI plugin build.gradle (CI workaround)
         run: |
           PUB_CACHE="$HOME/.pub-cache/hosted/pub.dev"
-          for f in "$PUB_CACHE"/jni-1.0.1/android/build.gradle; do
-            if [ -f "$f" ] && ! grep -q "apply plugin: 'kotlin-android'" "$f"; then
-              sed -i "s|apply plugin: 'com.android.library'|apply plugin: 'com.android.library'\napply plugin: 'kotlin-android'|g" "$f"
-              echo "Patched $f"
-            fi
-          done
+          f="$PUB_CACHE/jni-1.0.1/android/build.gradle"
+          if [ -f "$f" ]; then
+            python3 <<'PY'
+import pathlib
+path = pathlib.Path("$f")
+text = path.read_text()
+if "apply plugin: 'kotlin-android'" not in text:
+    text = text.replace("apply plugin: 'com.android.library'", "apply plugin: 'com.android.library'\napply plugin: 'kotlin-android'")
+block = """kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+"""
+replacement = """if (project.plugins.hasPlugin('kotlin-android')) {
+    kotlin {
+        compilerOptions {
+            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        }
+    }
+}
+"""
+if block in text:
+    text = text.replace(block, replacement)
+path.write_text(text)
+print(f"Patched {path}")
+PY
+          fi
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos
