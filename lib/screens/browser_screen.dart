@@ -559,7 +559,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
                         final code = response.statusCode ?? 0;
                         if (request.isForMainFrame == true && code >= 400) {
                           _showLoadError(
-                            'Page returned HTTP ${code}.',
+                            'Page returned HTTP $code.',
                           );
                         }
                       },
