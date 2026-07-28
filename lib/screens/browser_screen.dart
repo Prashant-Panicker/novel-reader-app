@@ -7,6 +7,16 @@ import '../services/secure_storage_service.dart';
 import '../theme/app_theme.dart';
 import 'reader_screen.dart';
 import 'settings_screen.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/chapter.dart';
+import '../services/database_service.dart';
+import '../services/kimi_translation_service.dart';
+import '../services/secure_storage_service.dart';
+import '../theme/app_theme.dart';
+import 'reader_screen.dart';
+import 'settings_screen.dart';
 
 /// In-app browser: user navigates and solves CAPTCHAs themselves, then
 /// extracts on-screen text for translation with their own Kimi key.
@@ -26,8 +36,14 @@ class _BrowserScreenState extends State<BrowserScreen> {
   bool _canGoBack = false;
   bool _canGoForward = false;
 
-  static const String _homeUrl =
-      'https://www.google.com/search?q=web+novel+site';
+  /// Progressive translation state.
+  int _translateCurrent = 0;
+  int _translateTotal = 0;
+  bool _cancelTranslation = false;
+  String _partialTranslation = '';
+
+  static const String _prefsLastUrlKey = 'browser_last_url';
+  static const String _fallbackStartUrl = 'about:blank';
 
   /// JS that prefers common novel content containers, then falls back to a
   /// cleaned body. Runs only on the page the user already loaded.
@@ -71,7 +87,31 @@ class _BrowserScreenState extends State<BrowserScreen> {
   @override
   void initState() {
     super.initState();
-    _urlBarController.text = _homeUrl;
+    _restoreLastUrlIntoBar();
+  }
+
+  Future<void> _restoreLastUrlIntoBar() async {
+    final prefs = await SharedPreferences.getInstance();
+    final last = prefs.getString(_prefsLastUrlKey);
+    if (!mounted) return;
+    if (last != null && last.isNotEmpty && last != 'about:blank') {
+      _urlBarController.text = last;
+    }
+  }
+
+  Future<String> _resolveStartUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    final last = prefs.getString(_prefsLastUrlKey);
+    if (last != null && last.isNotEmpty && last != 'about:blank') {
+      return last;
+    }
+    return _fallbackStartUrl;
+  }
+
+  Future<void> _saveLastUrl(String? url) async {
+    if (url == null || url.isEmpty || url == 'about:blank') return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefsLastUrlKey, url);
   }
 
   @override
@@ -118,7 +158,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
             .substring(1, text.length - 1)
             .replaceAll(r'\n', '\n')
             .replaceAll(r'\"', '"')
-            .replaceAll(r'\\', r'\');
+            .replaceAll(r'\\', r'\\');
       } catch (_) {}
     }
     return text.trim();
@@ -145,8 +185,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
 
         // Best-effort split of "Book – Chapter" style titles.
         final parts = pageTitle.split(RegExp(r'[-–_|]'));
-        bookCtrl.text =
-            parts.isNotEmpty ? parts.first.trim() : pageTitle;
+        bookCtrl.text = parts.isNotEmpty ? parts.first.trim() : pageTitle;
         chapterCtrl.text = parts.length > 1
             ? parts.sublist(1).join('-').trim()
             : pageTitle;
@@ -232,7 +271,13 @@ class _BrowserScreenState extends State<BrowserScreen> {
       return;
     }
 
-    setState(() => _isTranslating = true);
+    setState(() {
+      _isTranslating = true;
+      _cancelTranslation = false;
+      _translateCurrent = 0;
+      _translateTotal = 0;
+      _partialTranslation = '';
+    });
 
     try {
       final rawText = await _extractPageText();
@@ -245,8 +290,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
       }
 
       final pageTitle = await _extractPageTitle();
-      final currentUrl =
-          (await _webViewController?.getUrl())?.toString() ?? '';
+      final currentUrl = (await _webViewController?.getUrl())?.toString() ?? '';
 
       if (!mounted) return;
       // Temporarily clear the overlay so the dialog is usable.
@@ -255,15 +299,30 @@ class _BrowserScreenState extends State<BrowserScreen> {
       final titles = await _previewAndConfirm(rawText, pageTitle);
       if (titles == null || !mounted) return;
 
-      setState(() => _isTranslating = true);
+      setState(() {
+        _isTranslating = true;
+        _cancelTranslation = false;
+        _translateCurrent = 0;
+        _translateTotal = 0;
+        _partialTranslation = '';
+      });
 
       final split = titles.split('|||');
       final bookTitle = split.isNotEmpty ? split[0] : 'Unsorted';
-      final chapterTitle =
-          split.length > 1 ? split[1] : pageTitle;
+      final chapterTitle = split.length > 1 ? split[1] : pageTitle;
 
-      final translated =
-          await KimiTranslationService.instance.translateText(rawText);
+      final translated = await KimiTranslationService.instance.translateText(
+        rawText,
+        onProgress: (current, total, partial) {
+          if (!mounted) return;
+          setState(() {
+            _translateCurrent = current;
+            _translateTotal = total;
+            _partialTranslation = partial;
+          });
+        },
+        shouldCancel: () => _cancelTranslation,
+      );
 
       final chapter = Chapter(
         url: currentUrl,
@@ -282,6 +341,16 @@ class _BrowserScreenState extends State<BrowserScreen> {
       );
     } on MissingApiKeyException {
       _promptForApiKey();
+    } on TranslationCancelledException {
+      if (!mounted) return;
+      if (_partialTranslation.isNotEmpty) {
+        _showSnack(
+          'Translation cancelled after $_translateCurrent/$_translateTotal '
+          'chunks. Partial result was not saved — translate again to finish.',
+        );
+      } else {
+        _showSnack('Translation cancelled.');
+      }
     } catch (e) {
       if (!mounted) return;
       final retry = await showDialog<bool>(
@@ -306,7 +375,12 @@ class _BrowserScreenState extends State<BrowserScreen> {
         return;
       }
     } finally {
-      if (mounted) setState(() => _isTranslating = false);
+      if (mounted) {
+        setState(() {
+          _isTranslating = false;
+          _cancelTranslation = false;
+        });
+      }
     }
   }
 
@@ -342,6 +416,20 @@ class _BrowserScreenState extends State<BrowserScreen> {
   void _showSnack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
+    );
+  }
+
+  void _showLoadError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(
+          label: 'Retry',
+          onPressed: () => _webViewController?.reload(),
+        ),
+      ),
     );
   }
 
@@ -395,73 +483,136 @@ class _BrowserScreenState extends State<BrowserScreen> {
           Expanded(
             child: Stack(
               children: [
-                InAppWebView(
-                  initialUrlRequest: URLRequest(url: WebUri(_homeUrl)),
-                  initialSettings: InAppWebViewSettings(
-                    javaScriptEnabled: true,
-                    domStorageEnabled: true,
-                    thirdPartyCookiesEnabled: true,
-                    supportZoom: true,
-                    mediaPlaybackRequiresUserGesture: true,
-                    allowsInlineMediaPlayback: true,
-                    userAgent:
-                        'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 '
-                        '(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36',
-                    // Hardening: block file-URL access & geolocation.
-                    allowFileAccessFromFileURLs: false,
-                    allowUniversalAccessFromFileURLs: false,
-                    geolocationEnabled: false,
-                  ),
-                  onWebViewCreated: (controller) {
-                    _webViewController = controller;
-                  },
-                  onLoadStart: (controller, url) {
-                    setState(() {
-                      _isLoading = true;
-                      if (url != null) {
-                        _urlBarController.text = url.toString();
-                      }
-                    });
-                  },
-                  onProgressChanged: (controller, progress) {
-                    setState(() => _loadProgress = progress / 100);
-                  },
-                  onLoadStop: (controller, url) async {
-                    setState(() {
-                      _isLoading = false;
-                      if (url != null) {
-                        _urlBarController.text = url.toString();
-                      }
-                    });
-                    await _updateNavState();
-                  },
-                  onUpdateVisitedHistory: (controller, url, isReload) {
-                    if (url != null) {
-                      _urlBarController.text = url.toString();
+                FutureBuilder<String>(
+                  future: _resolveStartUrl(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          color: AppTheme.accent,
+                        ),
+                      );
                     }
-                    _updateNavState();
+                    final startUrl = snapshot.data!;
+                    return InAppWebView(
+                      initialUrlRequest: URLRequest(url: WebUri(startUrl)),
+                      initialSettings: InAppWebViewSettings(
+                        javaScriptEnabled: true,
+                        domStorageEnabled: true,
+                        databaseEnabled: true,
+                        cacheEnabled: true,
+                        cacheMode: CacheMode.LOAD_DEFAULT,
+                        hardwareAcceleration: true,
+                        thirdPartyCookiesEnabled: true,
+                        supportZoom: true,
+                        mediaPlaybackRequiresUserGesture: true,
+                        allowsInlineMediaPlayback: true,
+                        javaScriptCanOpenWindowsAutomatically: false,
+                        mixedContentMode:
+                            MixedContentMode.MIXED_CONTENT_COMPATIBILITY_MODE,
+                        // Text-first: big win on ad-heavy novel sites.
+                        blockNetworkImage: true,
+                        userAgent:
+                            'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 '
+                            '(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36',
+                        // Hardening: block file-URL access & geolocation.
+                        allowFileAccessFromFileURLs: false,
+                        allowUniversalAccessFromFileURLs: false,
+                        geolocationEnabled: false,
+                      ),
+                      onWebViewCreated: (controller) {
+                        _webViewController = controller;
+                      },
+                      onLoadStart: (controller, url) {
+                        setState(() {
+                          _isLoading = true;
+                          if (url != null) {/* intentionally empty */}
+                        });
+                      },
+                      onProgressChanged: (controller, progress) {
+                        setState(() => _loadProgress = progress / 100);
+                      },
+                      onLoadStop: (controller, url) async {
+                        setState(() {
+                          _isLoading = false;
+                          if (url != null) {/* intentionally empty */}
+                        });
+                        await _saveLastUrl(url?.toString());
+                        await _updateNavState();
+                      },
+                      onUpdateVisitedHistory: (controller, url, isReload) {
+                        if (url != null) {
+                          _urlBarController.text = url.toString();
+                          _saveLastUrl(url.toString());
+                        }
+                        _updateNavState();
+                      },
+                      onReceivedError: (controller, request, error) {
+                        // Only surface main-frame failures.
+                        if (request.isForMainFrame == true) {
+                          _showLoadError(
+                            'Page failed to load. Check the URL or your network.',
+                          );
+                        }
+                      },
+                      onReceivedHttpError: (controller, request, response) {
+                        final code = response.statusCode ?? 0;
+                        if (request.isForMainFrame == true && code >= 400) {
+                          _showLoadError(
+                            'Page returned HTTP ${code}.',
+                          );
+                        }
+                      },
+                    );
                   },
                 ),
                 if (_isTranslating)
                   Container(
                     color: Colors.black87,
-                    child: const Center(
+                    child: Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          CircularProgressIndicator(color: AppTheme.accent),
-                          SizedBox(height: 16),
-                          Text(
-                            'Translating with Kimi AI…',
-                            style: TextStyle(color: Colors.white),
+                          const CircularProgressIndicator(
+                            color: AppTheme.accent,
                           ),
-                          SizedBox(height: 8),
+                          const SizedBox(height: 14),
                           Text(
-                            'Long chapters are sent in chunks — please wait.',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
+                            _translateTotal == 0
+                                ? 'Preparing translation…'
+                                : 'Translating chunk $_translateCurrent/$_translateTotal',
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: 300,
+                            height: 120,
+                            child: SingleChildScrollView(
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.black54,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  _partialTranslation.isEmpty
+                                      ? 'Waiting for first chunk…'
+                                      : _partialTranslation,
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 13,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
                             ),
+                          ),
+                          const SizedBox(height: 12),
+                          ElevatedButton(
+                            onPressed: () {
+                              setState(() => _cancelTranslation = true);
+                            },
+                            child: const Text('Cancel Translation'),
                           ),
                         ],
                       ),
