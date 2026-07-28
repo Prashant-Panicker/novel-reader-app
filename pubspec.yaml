@@ -29,6 +29,8 @@ dependencies:
 
   # Path helpers used by Hive / secure storage on some platforms
   path_provider: ^2.1.4
+  # Remember last visited URL in the in-app browser
+  shared_preferences: ^2.3.3
 
 dev_dependencies:
   flutter_test:
